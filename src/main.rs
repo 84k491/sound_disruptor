@@ -68,12 +68,11 @@ impl MusicFile {
     }
 
     fn compose_path_from_tags(&self, tags: &Tags) -> PathBuf {
+        let ext = self.relative_path.extension().unwrap().to_str().unwrap();
         let mut ret = PathBuf::new();
         ret.push(&tags.artist);
         ret.push(&tags.album);
-        ret.push(&tags.title);
-        let ext = self.relative_path.extension().unwrap();
-        ret.set_extension(ext);
+        ret.push(tags.title.clone() + "." + ext);
         return ret;
     }
 
@@ -197,8 +196,8 @@ impl FileSorter {
         println!("Moving from {:?} to {:?}", source_full_path, dest_full_path);
         let _ = fs::create_dir_all(dest_full_path.parent().unwrap());
         let move_res = fs::rename(&source_full_path, &dest_full_path);
-        if !move_res.is_ok() {
-            println!("Moving to {:?} failed", dest_full_path);
+        if let Err(err) = move_res {
+            println!("Moving to {:?} failed, err: {}", dest_full_path, err);
             return;
         }
         println!("Done");
