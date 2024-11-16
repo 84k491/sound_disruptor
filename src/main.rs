@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 use walkdir::WalkDir;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Tags {
     artist: String,
     album: String,
@@ -16,6 +16,11 @@ impl Tags {
         self.artist = self.artist.replace("/", "-");
         self.album = self.album.replace("/", "-");
         self.title = self.title.replace("/", "-");
+    }
+    fn remove_null_bytes(&mut self) {
+        self.artist = self.artist.replace("\0", "");
+        self.album = self.album.replace("\0", "");
+        self.title = self.title.replace("\0", "");
     }
 }
 
@@ -67,7 +72,12 @@ impl MusicFile {
         return ret;
     }
 
-    fn compose_path_from_tags(&self, tags: &Tags) -> PathBuf {
+    fn compose_path_from_tags(&self, input_tags: &Tags) -> PathBuf {
+        let tags = {
+            let mut t = input_tags.clone();
+            t.remove_null_bytes();
+            t
+        };
         let ext = self.relative_path.extension().unwrap().to_str().unwrap();
         let mut ret = PathBuf::new();
         ret.push(&tags.artist);
@@ -100,9 +110,23 @@ impl MusicFile {
         return ret;
     }
 
-    fn tags_match_filesystem(&self) -> bool {
+    fn tags_match(&self) -> bool {
         let tags = self.compose_tags_from_path();
         return tags == self.tags();
+    }
+
+    fn paths_match(&self) -> bool {
+        let real_path = self.relative_path.clone();
+        let real_path_str = real_path.to_str();
+        if real_path_str.is_none() {
+            return false;
+        }
+        let path_from_tags = self.compose_path_from_tags(&self.tags());
+        let path_from_tags_str = path_from_tags.to_str();
+        if path_from_tags_str.is_none() {
+            return false;
+        }
+        return Some(real_path_str) == Some(path_from_tags_str);
     }
 
     fn set_tags(&mut self, tags: &Tags) {
@@ -153,9 +177,20 @@ impl FileSorter {
                 continue;
             }
             let mut music_file = music_file.unwrap();
-            if music_file.tags_match_filesystem() {
-                print!(".");
-                continue;
+            // comparing on potential result
+            match self.metainfo_source {
+                MetaInfoSource::Tags => {
+                    if music_file.paths_match() {
+                        print!(".");
+                        continue;
+                    }
+                }
+                MetaInfoSource::Filesystem => {
+                    if music_file.tags_match() {
+                        print!(".");
+                        continue;
+                    }
+                }
             }
             println!("");
             let fs_tags = music_file.compose_tags_from_path();
