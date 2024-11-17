@@ -1,6 +1,7 @@
 use audiotags::Tag;
 use clap::Parser;
 use pathdiff::diff_paths;
+use std::collections::VecDeque;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -239,7 +240,8 @@ impl FileSorter {
         println!("Done");
     }
 
-    fn convert_all_flac_to_mp3(&self) {
+    fn get_all_lossless(&self) -> Vec<PathBuf> {
+        let mut res = Vec::<PathBuf>::new();
         for entry in WalkDir::new(self.base_path.clone()) {
             let absolute_path = entry.unwrap().path().to_path_buf();
             if absolute_path.is_dir() {
@@ -247,13 +249,35 @@ impl FileSorter {
             }
             if let Some(ext) = absolute_path.extension() {
                 if ext == "flac" || ext == "m4a" {
-                    self.convert_to_mp3(&absolute_path);
+                    res.push(absolute_path);
                 }
             }
         }
+        return res;
     }
 
-    fn convert_to_mp3(&self, full_path: &PathBuf) {
+    fn convert_all_flac_to_mp3(&self) {
+        let limit = 18;
+
+        let vec = self.get_all_lossless();
+        let mut q = VecDeque::<std::thread::JoinHandle<()>>::new();
+        for path in vec.iter() {
+            if q.len() >= limit {
+                let _ = q.pop_front().unwrap().join();
+            }
+            let p = path.to_path_buf();
+            let handle = std::thread::spawn(move || {
+                FileSorter::convert_to_mp3(&p);
+            });
+            q.push_back(handle);
+        }
+
+        while q.len() != 0 {
+            let _ = q.pop_front().unwrap().join();
+        }
+    }
+
+    fn convert_to_mp3(full_path: &PathBuf) {
         let mut output_path = full_path.clone();
         output_path.set_extension("mp3");
         println!("Converting {:?} -> {:?}", &full_path, &output_path);
@@ -309,9 +333,6 @@ fn remove_non_music_direcotories(path: &PathBuf) -> bool {
         }
 
         let tags = Tag::new().read_from_path(entry.path());
-        if let Err(e) = &tags {
-            println!("Error on getting tags: {}", e);
-        }
         let has_tags = tags.is_ok();
         if has_tags {
             all_contents_removed = false;
