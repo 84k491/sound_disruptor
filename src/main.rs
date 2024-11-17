@@ -3,6 +3,7 @@ use clap::Parser;
 use pathdiff::diff_paths;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,7 +212,7 @@ impl FileSorter {
                 MetaInfoSource::Filesystem => {
                     let tags = music_file.compose_tags_from_path();
                     music_file.set_tags(&tags);
-                    println!("Modified tags for {:?}", absolute_path)
+                    println!("Modified tags for {:?}", &absolute_path)
                 }
                 MetaInfoSource::Tags => {
                     self.copy_to_tag_based_directory(music_file);
@@ -236,6 +237,47 @@ impl FileSorter {
             return;
         }
         println!("Done");
+    }
+
+    fn convert_all_flac_to_mp3(&self) {
+        for entry in WalkDir::new(self.base_path.clone()) {
+            let absolute_path = entry.unwrap().path().to_path_buf();
+            if absolute_path.is_dir() {
+                continue;
+            }
+            if let Some(ext) = absolute_path.extension() {
+                if ext == "flac" || ext == "m4a" {
+                    self.convert_to_mp3(&absolute_path);
+                }
+            }
+        }
+    }
+
+    fn convert_to_mp3(&self, full_path: &PathBuf) {
+        let mut output_path = full_path.clone();
+        output_path.set_extension("mp3");
+        println!("Converting {:?} -> {:?}", &full_path, &output_path);
+        let res = Command::new("ffmpeg")
+            .arg("-i")
+            .arg(&full_path)
+            .arg("-ab")
+            .arg("320k")
+            .arg(&output_path)
+            .output();
+
+        match res {
+            Ok(_) => {
+                let _ = std::fs::remove_file(&full_path).inspect_err(|e| {
+                    println!("Failed to remove {}", e);
+                });
+            }
+            Err(er) => {
+                println!(
+                    "Failed to convert {:?} -> {:?}. Err: {}",
+                    &full_path, &output_path, er
+                );
+            }
+        }
     }
 }
 
@@ -266,7 +308,11 @@ fn remove_non_music_direcotories(path: &PathBuf) -> bool {
             continue;
         }
 
-        let has_tags = Tag::new().read_from_path(entry.path()).is_ok();
+        let tags = Tag::new().read_from_path(entry.path());
+        if let Err(e) = &tags {
+            println!("Error on getting tags: {}", e);
+        }
+        let has_tags = tags.is_ok();
         if has_tags {
             all_contents_removed = false;
             continue;
@@ -315,4 +361,5 @@ fn main() {
     let fs = FileSorter::new(&base_path, metainfo_source, args.dry_run);
     fs.sort();
     remove_non_music_direcotories(&base_path);
+    fs.convert_all_flac_to_mp3();
 }
