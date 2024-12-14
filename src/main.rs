@@ -1,7 +1,7 @@
 use audiotags::Tag;
 use clap::Parser;
 use pathdiff::diff_paths;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -10,6 +10,7 @@ use walkdir::WalkDir;
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Tags {
     artist: String,
+    album_artist: String,
     album: String,
     title: String,
 }
@@ -17,12 +18,26 @@ impl Tags {
     fn remove_slashes(&mut self) {
         self.artist = self.artist.replace("/", "-");
         self.album = self.album.replace("/", "-");
+        self.album_artist = self.album_artist.replace("/", "-");
         self.title = self.title.replace("/", "-");
     }
     fn remove_null_bytes(&mut self) {
         self.artist = self.artist.replace("\0", "");
         self.album = self.album.replace("\0", "");
+        self.album_artist = self.album_artist.replace("\0", "");
         self.title = self.title.replace("\0", "");
+    }
+    fn remove_invalid_symbols(&mut self) {
+        let invalid_symbols = HashSet::from(["<", ">", ":", "\"", "/", "\\", "|", "?", "*"]);
+        invalid_symbols.iter().for_each(|sym| {
+            self.artist = self.artist.replace(sym, "");
+            self.album_artist = self.album_artist.replace(sym, "");
+            self.title = self.title.replace(sym, "");
+        });
+    }
+
+    fn verify_artists(&self) -> bool {
+        return self.album_artist.is_empty();
     }
 }
 
@@ -53,6 +68,7 @@ impl MusicFile {
         let mut ret = Tags {
             title: String::new(),
             album: String::new(),
+            album_artist: String::new(),
             artist: String::new(),
         };
         let stem = self.relative_path.file_stem();
@@ -71,6 +87,7 @@ impl MusicFile {
             }
         }
         ret.remove_slashes();
+        ret.remove_invalid_symbols();
         return ret;
     }
 
@@ -78,11 +95,13 @@ impl MusicFile {
         let tags = {
             let mut t = input_tags.clone();
             t.remove_null_bytes();
+            t.remove_invalid_symbols();
             t
         };
         let ext = self.relative_path.extension().unwrap().to_str().unwrap();
         let mut ret = PathBuf::new();
         ret.push(&tags.artist);
+        // it's a path, no need to push album artist
         ret.push(&tags.album);
         ret.push(tags.title.clone() + "." + ext);
         return ret;
@@ -91,24 +110,32 @@ impl MusicFile {
     fn tags(&self) -> Tags {
         let mut full_path = self.base_path.clone();
         full_path.push(&self.relative_path);
-        let tag = Tag::new().read_from_path(full_path).unwrap();
+        let tag = Tag::new().read_from_path(&full_path).unwrap();
         let mut ret = Tags {
             title: String::new(),
             album: String::new(),
+            album_artist: String::new(),
             artist: String::new(),
         };
-        if tag.title().is_some() {
-            ret.title = tag.title().unwrap().to_string();
+
+        if let Some(title) = tag.title() {
+            ret.title = title.to_string();
         }
 
-        if tag.album_title().is_some() {
-            ret.album = tag.album_title().unwrap().to_string();
+        if let Some(album) = tag.album_title() {
+            ret.album = album.to_string();
         }
 
-        if tag.artist().is_some() {
-            ret.artist = tag.artist().unwrap().to_string();
+        if let Some(artist) = tag.artist() {
+            ret.artist = artist.to_string();
         }
+
+        if let Some(album_artist) = tag.album_artist() {
+            ret.album_artist = album_artist.to_string();
+        }
+
         ret.remove_slashes();
+        ret.remove_invalid_symbols();
         return ret;
     }
 
@@ -135,6 +162,7 @@ impl MusicFile {
         let mut full_path = self.base_path.clone();
         full_path.push(&self.relative_path);
         let mut tag = Tag::new().read_from_path(full_path).unwrap();
+        tag.remove_album_artist();
         tag.set_title(&tags.title.as_str());
         tag.set_album_title(&tags.album.as_str());
         tag.set_artist(&tags.artist.as_str());
@@ -188,7 +216,7 @@ impl FileSorter {
                     }
                 }
                 MetaInfoSource::Filesystem => {
-                    if music_file.tags_match() {
+                    if music_file.tags_match() && music_file.tags().verify_artists() {
                         print!(".");
                         continue;
                     }
@@ -210,13 +238,16 @@ impl FileSorter {
                 continue;
             }
             match self.metainfo_source {
-                MetaInfoSource::Filesystem => {
-                    let tags = music_file.compose_tags_from_path();
-                    music_file.set_tags(&tags);
-                    println!("Modified tags for {:?}", &absolute_path)
-                }
                 MetaInfoSource::Tags => {
                     self.copy_to_tag_based_directory(music_file);
+                }
+                MetaInfoSource::Filesystem => {
+                    music_file.set_tags(&fs_tags);
+                    println!(
+                        "Modified tags for {:?}. Now: {:?}",
+                        &absolute_path,
+                        music_file.tags()
+                    )
                 }
             }
         }
