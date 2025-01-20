@@ -1,22 +1,22 @@
 pub mod file_sorter {
+    use crate::music_file::music_file::MusicFile;
     use pathdiff::diff_paths;
     use std::{collections::VecDeque, fs, path::PathBuf, process::Command};
     use walkdir::WalkDir;
-    use crate::music_file::music_file::MusicFile;
 
-    pub enum MetaInfoSource {
-        Filesystem,
-        Tags,
+    pub enum ActionOnFile {
+        ModifyTags,
+        MoveFiles,
     }
 
     pub struct FileSorter {
         pub base_path: PathBuf,
-        pub metainfo_source: MetaInfoSource,
+        pub metainfo_source: ActionOnFile,
         pub dry_run: bool,
     }
 
     impl FileSorter {
-        pub fn new(base: &PathBuf, metainfo_source: MetaInfoSource, dry_run: bool) -> Self {
+        pub fn new(base: &PathBuf, metainfo_source: ActionOnFile, dry_run: bool) -> Self {
             FileSorter {
                 base_path: base.clone(),
                 metainfo_source,
@@ -39,24 +39,27 @@ pub mod file_sorter {
                     print!("n");
                     continue;
                 }
-                let mut music_file = music_file.unwrap();
+                let music_file = music_file.unwrap();
                 // comparing on potential result
                 match self.metainfo_source {
-                    MetaInfoSource::Tags => {
+                    ActionOnFile::MoveFiles => {
                         if music_file.paths_match() {
                             print!(".");
                             continue;
                         }
                     }
-                    MetaInfoSource::Filesystem => {
-                        if music_file.tags_match() && music_file.tags().verify_artists() {
+                    ActionOnFile::ModifyTags => {
+                        if music_file.tags_match()
+                            && music_file.tags().verify_artists()
+                            && music_file.tags().verify_track_number()
+                        {
                             print!(".");
                             continue;
                         }
                     }
                 }
                 println!("");
-                let fs_tags = music_file.compose_tags_from_path();
+                let mut fs_tags = music_file.compose_tags_from_path();
                 println!("Real path: {}", relative_path.display());
                 println!(
                     "Path from tags: {:?}",
@@ -70,11 +73,13 @@ pub mod file_sorter {
                 if self.dry_run {
                     continue;
                 }
+                fs_tags.fix_track_number();
+                let mut music_file = music_file;
                 match self.metainfo_source {
-                    MetaInfoSource::Tags => {
+                    ActionOnFile::MoveFiles => {
                         self.copy_to_tag_based_directory(music_file);
                     }
-                    MetaInfoSource::Filesystem => {
+                    ActionOnFile::ModifyTags => {
                         music_file.set_tags(&fs_tags);
                         println!(
                             "Modified tags for {:?}. Now: {:?}",

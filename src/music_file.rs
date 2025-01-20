@@ -32,6 +32,7 @@ pub mod music_file {
                 album: String::new(),
                 album_artist: String::new(),
                 artist: String::new(),
+                track_number: String::new(),
             };
             let stem = self.relative_path.file_stem();
             if let Some(title) = stem {
@@ -78,6 +79,7 @@ pub mod music_file {
                 album: String::new(),
                 album_artist: String::new(),
                 artist: String::new(),
+                track_number: String::new(),
             };
 
             if let Some(title) = tag.title() {
@@ -96,14 +98,20 @@ pub mod music_file {
                 ret.album_artist = album_artist.to_string();
             }
 
+            if let Some(track_number) = tag.track_number() {
+                ret.track_number = track_number.to_string();
+            }
+
             ret.remove_slashes();
             ret.remove_invalid_symbols();
             return ret;
         }
 
         pub fn tags_match(&self) -> bool {
-            let tags = self.compose_tags_from_path();
-            return tags == self.tags();
+            let mut tags = self.compose_tags_from_path();
+            let real_tags = self.tags();
+            tags.track_number = real_tags.track_number.clone();
+            return tags == real_tags;
         }
 
         pub fn paths_match(&self) -> bool {
@@ -128,6 +136,12 @@ pub mod music_file {
             tag.set_title(&tags.title.as_str());
             tag.set_album_title(&tags.album.as_str());
             tag.set_artist(&tags.artist.as_str());
+            if let Ok(tn) = tags.track_number.parse::<u16>() {
+                tag.set_track_number(tn);
+            }
+            else {
+                println!("Failed to parse track number: {}", self.relative_path.display());
+            }
             let mut path = self.base_path.clone();
             path.push(self.relative_path.clone());
             tag.write_to_path(path.to_str().unwrap())

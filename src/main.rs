@@ -1,5 +1,5 @@
 use crate::file_sorter::file_sorter::FileSorter;
-use crate::file_sorter::file_sorter::MetaInfoSource;
+use crate::file_sorter::file_sorter::ActionOnFile;
 use audiotags::Tag;
 use clap::Parser;
 use std::path::PathBuf;
@@ -68,17 +68,17 @@ struct Args {
     #[arg(long, default_value_t = false)]
     dry_run: bool,
 
-    /// Move files to directories based on their tags
+    /// Move files to directories based on their tags. Modify tags without this flag
     #[arg(long, default_value_t = false)]
-    source_from_tags: bool,
+    move_files: bool,
 }
 
 fn main() {
     let args = Args::parse();
-    let metainfo_source = if args.source_from_tags {
-        MetaInfoSource::Tags
+    let metainfo_source = if args.move_files {
+        ActionOnFile::MoveFiles
     } else {
-        MetaInfoSource::Filesystem
+        ActionOnFile::ModifyTags
     };
 
     let base_path = std::env::current_dir().unwrap();

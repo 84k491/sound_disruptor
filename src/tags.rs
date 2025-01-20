@@ -8,6 +8,7 @@ pub mod tags {
         pub album_artist: String,
         pub album: String,
         pub title: String,
+        pub track_number: String,
     }
     impl Tags {
         pub fn remove_slashes(&mut self) {
@@ -33,6 +34,16 @@ pub mod tags {
 
         pub fn verify_artists(&self) -> bool {
             return self.album_artist.is_empty();
+        }
+
+        pub fn verify_track_number(&self) -> bool {
+            return !self.track_number.is_empty() && self.track_number.chars().fold(true, |acc, c| {
+                acc && c.is_ascii_digit()
+            });
+        }
+
+        pub fn fix_track_number(&mut self) {
+            self.track_number = self.track_number.chars().take_while(|c| c.is_ascii_digit()).collect();
         }
     }
 }
