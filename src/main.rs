@@ -1,12 +1,12 @@
-use crate::file_sorter::file_sorter::FileSorter;
 use crate::file_sorter::file_sorter::ActionOnFile;
+use crate::file_sorter::file_sorter::FileSorter;
 use audiotags::Tag;
 use clap::Parser;
 use std::path::PathBuf;
 
+mod file_sorter;
 mod music_file;
 mod tags;
-mod file_sorter;
 
 fn remove_non_music_direcotories(path: &PathBuf) -> bool {
     let res = std::fs::read_dir(&path);
@@ -68,17 +68,30 @@ struct Args {
     #[arg(long, default_value_t = false)]
     dry_run: bool,
 
-    /// Move files to directories based on their tags. Modify tags without this flag
+    /// Move files to directories based on their tags
     #[arg(long, default_value_t = false)]
     move_files: bool,
+
+    /// Modify tags based on path
+    #[arg(long, default_value_t = false)]
+    modify_tags: bool,
+
+    /// Reinstall tags
+    #[arg(long, default_value_t = false)]
+    reinstall_tags: bool,
 }
 
 fn main() {
     let args = Args::parse();
+
     let metainfo_source = if args.move_files {
         ActionOnFile::MoveFiles
-    } else {
+    } else if args.modify_tags {
         ActionOnFile::ModifyTags
+    } else if args.reinstall_tags {
+        ActionOnFile::ReinstallTags
+    } else {
+        panic!("No action specified");
     };
 
     let base_path = std::env::current_dir().unwrap();

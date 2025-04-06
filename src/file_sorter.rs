@@ -7,6 +7,7 @@ pub mod file_sorter {
     pub enum ActionOnFile {
         ModifyTags,
         MoveFiles,
+        ReinstallTags,
     }
 
     pub struct FileSorter {
@@ -68,28 +69,36 @@ pub mod file_sorter {
 
         pub fn modify_tags(&self, music_file: MusicFile) {
             // comparing on potential result
-            if music_file.tags_match()
-                && music_file.tags().verify_artists()
-                && music_file.tags().verify_track_number()
+            let mut fs_tags = music_file.compose_tags_from_path();
+            let real_tags = music_file.tags();
+            fs_tags.track_number = real_tags.track_number.clone();
+            fs_tags.fix_track_number();
+
+            if fs_tags == real_tags
             {
                 print!(".");
                 return;
             }
 
             println!("");
-            let mut fs_tags = music_file.compose_tags_from_path();
             println!("Path: {}", music_file.relative_path.display());
-            println!("Old Tags: {:?}", music_file.tags());
+            println!("Old Tags: {:?}", &real_tags);
             println!("New tags: {:?}", &fs_tags);
             if self.dry_run {
                 return;
             }
 
-            fs_tags.fix_track_number();
-            let mut music_file = music_file;
-
             music_file.set_tags(&fs_tags);
             println!("Modified tags for {:?}.", &music_file.relative_path)
+        }
+
+        pub fn reinstall_tags(&self, music_file: MusicFile) {
+            let mut t = music_file.tags();
+            music_file.remove_tags();
+            t.fix_track_number();
+            t.album_artist.clear();
+            music_file.set_tags(&t);
+            print!(".");
         }
 
         pub fn run(&self) {
@@ -99,6 +108,9 @@ pub mod file_sorter {
                 }
                 ActionOnFile::ModifyTags => {
                     self.for_each_music_file(|fs, mf| fs.modify_tags(mf));
+                }
+                ActionOnFile::ReinstallTags => {
+                    self.for_each_music_file(|fs, mf| fs.reinstall_tags(mf));
                 }
             }
         }

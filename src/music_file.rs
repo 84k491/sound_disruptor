@@ -107,13 +107,6 @@ pub mod music_file {
             return ret;
         }
 
-        pub fn tags_match(&self) -> bool {
-            let mut tags = self.compose_tags_from_path();
-            let real_tags = self.tags();
-            tags.track_number = real_tags.track_number.clone();
-            return tags == real_tags;
-        }
-
         pub fn paths_match(&self) -> bool {
             let real_path = self.relative_path.clone();
             let real_path_str = real_path.to_str();
@@ -128,24 +121,37 @@ pub mod music_file {
             return Some(real_path_str) == Some(path_from_tags_str);
         }
 
-        pub fn set_tags(&mut self, tags: &Tags) {
+        pub fn set_tags(&self, tags: &Tags) {
             let mut full_path = self.base_path.clone();
             full_path.push(&self.relative_path);
-            let mut tag = Tag::new().read_from_path(full_path).unwrap();
+            let mut tag = Tag::new().read_from_path(&full_path).unwrap();
             tag.remove_album_artist();
             tag.set_title(&tags.title.as_str());
             tag.set_album_title(&tags.album.as_str());
             tag.set_artist(&tags.artist.as_str());
             if let Ok(tn) = tags.track_number.parse::<u16>() {
                 tag.set_track_number(tn);
+            } else {
+                println!(
+                    "WARN Failed to parse track number: {}, value: '{}'",
+                    self.relative_path.display(),
+                    tags.track_number
+                );
             }
-            else {
-                println!("Failed to parse track number: {}", self.relative_path.display());
-            }
-            let mut path = self.base_path.clone();
-            path.push(self.relative_path.clone());
-            tag.write_to_path(path.to_str().unwrap())
-                .expect(format!("Fail to save to {:?}", path).as_str());
+            tag.write_to_path(full_path.to_str().unwrap())
+                .expect(format!("ERR Fail to save to {:?}", full_path).as_str());
+        }
+
+        pub fn remove_tags(&self) {
+            let mut full_path = self.base_path.clone();
+            full_path.push(&self.relative_path);
+            let mut tag = Tag::new().read_from_path(full_path).unwrap();
+
+            tag.remove_title();
+            tag.remove_album_title();
+            tag.remove_artist();
+            tag.remove_album_artist();
+            tag.remove_track_number();
         }
     }
 }
