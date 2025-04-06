@@ -83,7 +83,7 @@ fn main() {
 
     let base_path = std::env::current_dir().unwrap();
     let fs = FileSorter::new(&base_path, metainfo_source, args.dry_run);
-    fs.sort();
+    fs.run();
     remove_non_music_direcotories(&base_path);
     fs.convert_all_flac_to_mp3();
 }

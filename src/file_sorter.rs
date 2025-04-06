@@ -24,72 +24,83 @@ pub mod file_sorter {
             }
         }
 
-        pub fn sort(&self) {
+        pub fn for_each_music_file<F: FnMut(&FileSorter, MusicFile)>(&self, mut f: F) {
             for entry in WalkDir::new(self.base_path.clone()) {
                 let absolute_path = entry.unwrap().path().to_path_buf();
                 if absolute_path.is_dir() {
-                    print!("d");
                     continue;
                 }
                 let relative_path = diff_paths(&absolute_path, &self.base_path)
                     .expect("Can't create relative path");
-
                 let music_file = MusicFile::new(&self.base_path, &relative_path.to_path_buf());
                 if music_file.is_none() {
-                    print!("n");
                     continue;
                 }
                 let music_file = music_file.unwrap();
-                // comparing on potential result
-                match self.metainfo_source {
-                    ActionOnFile::MoveFiles => {
-                        if music_file.paths_match() {
-                            print!(".");
-                            continue;
-                        }
-                    }
-                    ActionOnFile::ModifyTags => {
-                        if music_file.tags_match()
-                            && music_file.tags().verify_artists()
-                            && music_file.tags().verify_track_number()
-                        {
-                            print!(".");
-                            continue;
-                        }
-                    }
+                f(self, music_file);
+            }
+        }
+
+        pub fn move_file(&self, music_file: MusicFile) {
+            // comparing on potential result
+            if music_file.paths_match() {
+                print!(".");
+                return;
+            }
+
+            println!("");
+            println!("Real path: {}", music_file.relative_path.display());
+            println!(
+                "Path from tags: {:?}",
+                music_file
+                    .compose_path_from_tags(&music_file.tags())
+                    .as_path()
+                    .as_os_str()
+            );
+
+            if self.dry_run {
+                return;
+            }
+
+            self.copy_to_tag_based_directory(music_file);
+            println!("");
+        }
+
+        pub fn modify_tags(&self, music_file: MusicFile) {
+            // comparing on potential result
+            if music_file.tags_match()
+                && music_file.tags().verify_artists()
+                && music_file.tags().verify_track_number()
+            {
+                print!(".");
+                return;
+            }
+
+            println!("");
+            let mut fs_tags = music_file.compose_tags_from_path();
+            println!("Path: {}", music_file.relative_path.display());
+            println!("Old Tags: {:?}", music_file.tags());
+            println!("New tags: {:?}", &fs_tags);
+            if self.dry_run {
+                return;
+            }
+
+            fs_tags.fix_track_number();
+            let mut music_file = music_file;
+
+            music_file.set_tags(&fs_tags);
+            println!("Modified tags for {:?}.", &music_file.relative_path)
+        }
+
+        pub fn run(&self) {
+            match self.metainfo_source {
+                ActionOnFile::MoveFiles => {
+                    self.for_each_music_file(|fs, mf| fs.move_file(mf));
                 }
-                println!("");
-                let mut fs_tags = music_file.compose_tags_from_path();
-                println!("Real path: {}", relative_path.display());
-                println!(
-                    "Path from tags: {:?}",
-                    music_file
-                        .compose_path_from_tags(&music_file.tags())
-                        .as_path()
-                        .as_os_str()
-                );
-                println!("Real Tags: {:?}", music_file.tags());
-                println!("Tags from FS: {:?}", &fs_tags);
-                if self.dry_run {
-                    continue;
-                }
-                fs_tags.fix_track_number();
-                let mut music_file = music_file;
-                match self.metainfo_source {
-                    ActionOnFile::MoveFiles => {
-                        self.copy_to_tag_based_directory(music_file);
-                    }
-                    ActionOnFile::ModifyTags => {
-                        music_file.set_tags(&fs_tags);
-                        println!(
-                            "Modified tags for {:?}. Now: {:?}",
-                            &absolute_path,
-                            music_file.tags()
-                        )
-                    }
+                ActionOnFile::ModifyTags => {
+                    self.for_each_music_file(|fs, mf| fs.modify_tags(mf));
                 }
             }
-            println!("");
         }
 
         fn copy_to_tag_based_directory(&self, file: MusicFile) {

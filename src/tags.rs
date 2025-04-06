@@ -37,13 +37,19 @@ pub mod tags {
         }
 
         pub fn verify_track_number(&self) -> bool {
-            return !self.track_number.is_empty() && self.track_number.chars().fold(true, |acc, c| {
-                acc && c.is_ascii_digit()
-            });
+            return !self.track_number.is_empty()
+                && self
+                    .track_number
+                    .chars()
+                    .fold(true, |acc, c| acc && c.is_ascii_digit());
         }
 
         pub fn fix_track_number(&mut self) {
-            self.track_number = self.track_number.chars().take_while(|c| c.is_ascii_digit()).collect();
+            self.track_number = self
+                .track_number
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
         }
     }
 }
